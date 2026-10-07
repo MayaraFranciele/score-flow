@@ -23,8 +23,9 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
+    roc_curve,
 )
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_score, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_predict, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
@@ -321,6 +322,33 @@ def get_financial_threshold(y_true: np.ndarray, y_proba: np.ndarray, fp_cost: fl
     return float(best_threshold), float(best_cost)
 
 
+def evaluate_thresholds_by_cost(y_true: np.ndarray, y_proba: np.ndarray, thresholds: list[float] | None = None) -> pd.DataFrame:
+    if thresholds is None:
+        thresholds = np.linspace(0.15, 0.85, 15).tolist()
+
+    rows = []
+    for threshold in thresholds:
+        y_pred = (y_proba >= threshold).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+        precision = precision_score(y_true, y_pred, zero_division=0)
+        recall = recall_score(y_true, y_pred, zero_division=0)
+        f1 = f1_score(y_true, y_pred, zero_division=0)
+        total_cost = fp * 1500.0 + fn * 8000.0
+        rows.append({
+            "threshold": round(float(threshold), 4),
+            "tp": int(tp),
+            "fp": int(fp),
+            "fn": int(fn),
+            "tn": int(tn),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1),
+            "custo_total": float(total_cost),
+        })
+
+    return pd.DataFrame(rows).sort_values("custo_total").reset_index(drop=True)
+
+
 def compute_metrics(y_true: np.ndarray, y_proba: np.ndarray, threshold: float) -> dict:
     y_pred = (y_proba >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
@@ -337,6 +365,99 @@ def compute_metrics(y_true: np.ndarray, y_proba: np.ndarray, threshold: float) -
         "fn": fn,
         "tn": tn,
     }
+
+
+def plot_roc_curve(y_true: np.ndarray, y_proba: np.ndarray, output_path: Path, title: str = "Curva ROC") -> None:
+    fpr, tpr, _ = roc_curve(y_true, y_proba)
+    plt.figure(figsize=(7, 6))
+    plt.plot(fpr, tpr, color="#3b82f6", linewidth=2)
+    plt.plot([0, 1], [0, 1], color="gray", linestyle="--", linewidth=1)
+    plt.title(title)
+    plt.xlabel("Taxa de falso positivo")
+    plt.ylabel("Taxa de verdadeiro positivo")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def compare_models_cv(X_train: pd.DataFrame, y_train: pd.Series, cv: StratifiedKFold) -> pd.DataFrame:
+    results = []
+    model_variants = build_model_variants()
+    preprocessor = build_preprocessor(
+        list(X_train.select_dtypes(include=["number"]).columns),
+        list(X_train.select_dtypes(exclude=["number"]).columns),
+    )
+
+    for name, model in model_variants.items():
+        pipeline = Pipeline([
+            ("preprocessor", preprocessor),
+            ("model", model),
+        ])
+        scores = cross_val_score(pipeline, X_train, y_train, cv=cv, scoring="roc_auc")
+        results.append({
+            "modelo": name,
+            "roc_auc_medio": float(np.mean(scores)),
+            "desvio_padrao": float(np.std(scores)),
+            "folds": scores.tolist(),
+        })
+
+    metrics_df = pd.DataFrame(results).sort_values("roc_auc_medio", ascending=False).reset_index(drop=True)
+    print("\nTabela de comparação por validação cruzada:")
+    print(metrics_df[["modelo", "roc_auc_medio", "desvio_padrao"]].to_string(index=False))
+    return metrics_df
+
+
+def compare_class_weight_effect(X_train: pd.DataFrame, y_train: pd.Series, cv: StratifiedKFold) -> pd.DataFrame:
+    rows = []
+    for class_weight in [None, "balanced"]:
+        pipeline = Pipeline([
+            ("preprocessor", build_preprocessor(
+                list(X_train.select_dtypes(include=["number"]).columns),
+                list(X_train.select_dtypes(exclude=["number"]).columns),
+            )),
+            ("model", LogisticRegression(max_iter=2000, random_state=42, class_weight=class_weight)),
+        ])
+        y_proba = cross_val_predict(pipeline, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
+        y_pred = (y_proba >= 0.5).astype(int)
+        rows.append({
+            "class_weight": "balanced" if class_weight else "none",
+            "precision": precision_score(y_train, y_pred, zero_division=0),
+            "recall": recall_score(y_train, y_pred, zero_division=0),
+            "f1": f1_score(y_train, y_pred, zero_division=0),
+            "roc_auc": roc_auc_score(y_train, y_proba),
+        })
+
+    df = pd.DataFrame(rows)
+    print("\nImpacto do class_weight='balanced' no modelo logístico:")
+    print(df[["class_weight", "precision", "recall", "f1", "roc_auc"]].to_string(index=False))
+    return df
+
+
+def compare_feature_impact(X_train: pd.DataFrame, y_train: pd.Series, feature_name: str, cv: StratifiedKFold) -> pd.DataFrame:
+    rows = []
+    for enabled in [True, False]:
+        df_subset = X_train.copy()
+        if not enabled and feature_name in df_subset.columns:
+            df_subset = df_subset.drop(columns=[feature_name])
+
+        pipeline = Pipeline([
+            ("preprocessor", build_preprocessor(
+                list(df_subset.select_dtypes(include=["number"]).columns),
+                list(df_subset.select_dtypes(exclude=["number"]).columns),
+            )),
+            ("model", LogisticRegression(max_iter=2000, random_state=42)),
+        ])
+        y_proba = cross_val_predict(pipeline, df_subset, y_train, cv=cv, method="predict_proba")[:, 1]
+        rows.append({
+            "feature": feature_name if enabled else f"sem_{feature_name}",
+            "roc_auc": roc_auc_score(y_train, y_proba),
+        })
+
+    df = pd.DataFrame(rows)
+    print(f"\nImpacto da feature '{feature_name}' na ROC AUC:")
+    print(df.to_string(index=False))
+    return df
 
 
 def main() -> None:
@@ -392,26 +513,11 @@ def main() -> None:
     )
 
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    results = {}
+    results_df = compare_models_cv(X_train, y_train, cv)
     model_variants = build_model_variants()
 
     preprocessor = build_preprocessor(numeric_cols, categorical_cols)
-
-    print("\nComparando modelos com validação cruzada (ROC AUC)...")
-    for name, model in model_variants.items():
-        pipeline = Pipeline([
-            ("preprocessor", preprocessor),
-            ("model", model),
-        ])
-        scores = cross_val_score(pipeline, X_train, y_train, cv=cv, scoring="roc_auc")
-        results[name] = {
-            "mean_roc_auc": float(np.mean(scores)),
-            "std_roc_auc": float(np.std(scores)),
-            "scores": scores,
-        }
-        print(f"{name}: ROC AUC médio = {np.mean(scores):.4f} ± {np.std(scores):.4f}")
-
-    best_model_name = max(results, key=lambda key: results[key]["mean_roc_auc"])
+    best_model_name = results_df.iloc[0]["modelo"]
     print(f"\nMelhor modelo inicial: {best_model_name}.")
 
     best_pipeline = Pipeline([
@@ -436,14 +542,23 @@ def main() -> None:
     else:
         best_pipeline.fit(X_train, y_train)
 
+    if best_model_name == "LogisticRegression":
+        compare_class_weight_effect(X_train, y_train, cv)
+    compare_feature_impact(X_train, y_train, "comprometimento_renda", cv)
+
+    cv_train_proba = cross_val_predict(best_pipeline, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
+    threshold_df = evaluate_thresholds_by_cost(y_train.to_numpy(), cv_train_proba)
+    threshold = float(threshold_df.iloc[0]["threshold"])
+
     y_proba = best_pipeline.predict_proba(X_test)[:, 1]
-
-    threshold, total_cost = get_financial_threshold(y_test.to_numpy(), y_proba)
     metrics = compute_metrics(y_test.to_numpy(), y_proba, threshold)
+    total_cost = threshold_df.iloc[0]["custo_total"]
+    plot_roc_curve(y_test.to_numpy(), y_proba, BASE_DIR / "roc_curve.png", title="Curva ROC - Modelo Final")
 
-    print("\nMétricas no conjunto de teste")
-    print(f"Limiar financeiro ótimo: {threshold:.3f}")
-    print(f"Custo financeiro total: R$ {total_cost:,.2f}")
+    print("\nAnálise de limiar por custo no conjunto de treino (cross_val_predict):")
+    print(threshold_df.to_string(index=False))
+    print(f"\nLimiar recomendado: {threshold:.3f}")
+    print(f"Custo total no conjunto de teste com esse limiar: R$ {metrics['fp'] * 1500.0 + metrics['fn'] * 8000.0:,.2f}")
     print(f"Matriz de confusão:\n{metrics['confusion_matrix']}")
     print(f"Precisão: {metrics['precision']:.4f}")
     print(f"Recall: {metrics['recall']:.4f}")
@@ -459,7 +574,7 @@ def main() -> None:
         "categorical_cols": categorical_cols,
         "target_col": target_col,
         "metrics": metrics,
-        "cv_results": results,
+        "cv_results": results_df.to_dict(orient="records"),
         "best_model_name": best_model_name,
     }
 

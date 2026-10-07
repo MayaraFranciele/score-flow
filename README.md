@@ -1,14 +1,26 @@
 # ScoreFlow
 
 ## Team members
-- [Student 1 Full Name]
-- [Student 2 Full Name]
-- [Student 3 Full Name]
-
-> Only one member of the group needs to publish the public GitHub repository and share the final link.
+- Allan Reis da Conceição
+- Gabriel Noriler Souza
+- Daniel Barbosa Alves
+- Mayara Franciele Santos da Silva
 
 ## Project overview
 ScoreFlow is a machine learning application designed to estimate the default risk of a credit applicant based on financial and personal profile data. The project uses a synthetic dataset, trains and compares classification models, selects the best model, and exposes a lightweight web dashboard where a user can insert customer information and obtain a risk prediction in real time.
+
+## Project report
+A complete technical report for this project is available in [docs/relatorio.md](docs/relatorio.md).
+
+To find it quickly, open the repository folder named `docs` and access the file `relatorio.md`. The document contains the academic and technical explanation of the project, including:
+- project introduction and objectives
+- problem definition and context
+- dataset description and preprocessing
+- methodology and feature engineering
+- model comparison and training process
+- evaluation metrics and results
+- architecture and implementation details
+- conclusions and final considerations
 
 ## Objective
 The main goal of this project is to build a complete end-to-end ML workflow that includes:
@@ -110,13 +122,3 @@ The model uses structured financial features to estimate the probability of defa
 This project uses a synthetic dataset designed for academic and demonstrative purposes. The data generation process aims to approximate common credit assessment patterns without using real customer data.
 
 The trained artifact is saved in the project root as `scoreflow_model.pkl` and is loaded by `app.py` when the application starts.
-
-## GitHub delivery
-For submission, one member of the group should:
-1. create a public GitHub repository
-2. upload the project files
-3. include this README in the repository root
-4. share the repository link as the final submission
-
-## Final note
-This repository is intended to support a complete ML project delivery with a trained model, reproducible training script, and interactive dashboard for credit risk evaluation.
