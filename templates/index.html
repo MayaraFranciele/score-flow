@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScoreFlow — ML Credit Risk Assessment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-container">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" class="brand-logo" aria-hidden="true">
+          <rect width="32" height="32" rx="9" fill="#3B82F6" />
+          <path d="M9 20l5-5 4 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span class="brand-name">ScoreFlow</span>
+      </div>
+      <div class="user-avatar">MF</div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="title-area">
+      <h1 class="main-title">Credit Risk Assessment</h1>
+      <p class="subtitle">Estimate the probability of default for a new loan application.</p>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="card form-card">
+        <h2 class="card-title">New Credit Assessment</h2>
+        <p class="card-subtitle">Applicant and loan details.</p>
+
+        {% set field_labels = {
+          'idade': 'Age',
+          'renda_mensal': 'Monthly Income',
+          'valor_emprestimo': 'Loan Amount',
+          'prazo_meses': 'Term (Months)',
+          'score_credito': 'Credit Score',
+          'tempo_emprego': 'Employment Length',
+          'divida_total': 'Total Debt',
+          'comprometimento_renda': 'Debt-to-Income Ratio',
+          'finalidade': 'Purpose',
+          'posse_imovel': 'Home Ownership'
+        } %}
+
+        {% set field_icons = {
+          'idade': 'calendar',
+          'renda_mensal': 'dollar-sign',
+          'valor_emprestimo': 'banknote',
+          'prazo_meses': 'calendar-clock',
+          'score_credito': 'gauge',
+          'tempo_emprego': 'briefcase',
+          'divida_total': 'layers',
+          'comprometimento_renda': 'scale',
+          'finalidade': 'target',
+          'posse_imovel': 'home'
+        } %}
+
+        {% set option_labels = {
+          'finalidade': {
+            'educacao': 'Education',
+            'veiculo': 'Vehicle',
+            'casa': 'Home',
+            'consumo': 'Consumption',
+            'negocios': 'Business',
+            'outros': 'Other'
+          },
+          'posse_imovel': {
+            'sim': 'Yes',
+            'nao': 'No'
+          }
+        } %}
+
+        <form id="credit-form" class="form-grid">
+          {% for key, data in problemas['credito']['numericas'].items() %}
+          <div class="field-group">
+            <label class="field-label" for="{{ key }}">{{ field_labels.get(key, key.replace('_', ' ').title()) }}</label>
+            <div class="input-wrapper input-shell">
+              <span class="field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="lucide-icon"><use href="#{{ field_icons.get(key, 'circle') }}"></use></svg>
+              </span>
+              <input
+                id="{{ key }}"
+                name="{{ key }}"
+                type="number"
+                step="any"
+                min="{{ data['min'] }}"
+                max="{{ data['max'] }}"
+                value="{{ data['default'] }}"
+                required
+                class="input-control has-icon"
+              />
+            </div>
+          </div>
+          {% endfor %}
+
+          {% for key, options in problemas['credito']['categoricas'].items() %}
+          <div class="field-group span-2">
+            <label class="field-label" for="{{ key }}">{{ field_labels.get(key, key.replace('_', ' ').title()) }}</label>
+            <div class="input-wrapper input-shell select-shell">
+              <span class="field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="lucide-icon"><use href="#{{ field_icons.get(key, 'circle') }}"></use></svg>
+              </span>
+              <select id="{{ key }}" name="{{ key }}" required class="input-control select-control has-icon">
+                {% for option in options %}
+                <option value="{{ option }}">{{ option_labels.get(key, {}).get(option, option) }}</option>
+                {% endfor %}
+              </select>
+              <svg viewBox="0 0 24 24" class="select-chevron" aria-hidden="true"><use href="#chevron-down"></use></svg>
+            </div>
+          </div>
+          {% endfor %}
+
+          <div class="form-actions span-2">
+            <button type="submit" class="btn-primary">Analyze Risk</button>
+            <button type="button" class="btn-secondary clear-btn" id="clear-btn">Clear</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card result-card">
+        <h2 class="card-title">Prediction Result</h2>
+        <p class="card-subtitle">Model output for this application.</p>
+
+        <div id="resultado" class="ring-area" aria-live="polite">
+          <div class="gauge-container">
+            <svg viewBox="0 0 200 200" class="gauge-svg">
+              <circle cx="100" cy="100" r="88" stroke-width="5" class="gauge-track" />
+              <circle id="gauge-bar" cx="100" cy="100" r="88" stroke-width="5" stroke-linecap="round" class="gauge-bar gauge-low" style="stroke-dasharray: 553; stroke-dashoffset: 415;" />
+            </svg>
+            <div class="gauge-content">
+              <span class="gauge-label">DEFAULT RISK</span>
+              <span id="risk-value" class="gauge-value">25%</span>
+            </div>
+          </div>
+
+          <div class="status-badge status-low"><span class="status-dot"></span>LOW RISK</div>
+        </div>
+
+        <div class="cost-breakdown">
+          <div class="cost-row">
+            <div class="cost-icon cost-icon-success">↗</div>
+            <span class="cost-label">Estimated Opportunity Cost</span>
+            <span class="cost-value">$6,750</span>
+          </div>
+
+          <div class="cost-row">
+            <div class="cost-icon cost-icon-danger">⚠</div>
+            <span class="cost-label">Estimated Default Cost</span>
+            <span class="cost-value">$3,750</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="calendar" viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="dollar-sign" viewBox="0 0 24 24"><path d="M12 1v22M17 5.5A4 4 0 0 0 13 4h-2a4 4 0 0 0 0 8h2a4 4 0 0 1 0 8H9a4 4 0 0 1-4-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="banknote" viewBox="0 0 24 24"><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9zM3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2M8 13h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="calendar-clock" viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM12 16v-4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="gauge" viewBox="0 0 24 24"><path d="M12 14a2 2 0 0 0 2-2M16.5 8.5a7 7 0 1 0-9 9.9M4 14a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="briefcase" viewBox="0 0 24 24"><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3M4 8h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="layers" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zm0 8-10 5 10 5 10-5-10-5zm0 8v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="scale" viewBox="0 0 24 24"><path d="M16 4h4v4M20 4l-6 6M4 20h16M7 16l4-8 4 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9v10h14V9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    </defs>
+  </svg>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
