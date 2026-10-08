@@ -3,6 +3,7 @@
 ## Team members
 - Allan Reis da Conceição
 - Gabriel Noriler Souza
+- Giovana Alves Duarte de Sena
 - Daniel Barbosa Alves
 - Mayara Franciele Santos da Silva
 
